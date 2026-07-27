@@ -82,58 +82,42 @@ async function fetchTencentStocks(codes) {
 // 股票搜索（腾讯智能搜索接口，使用 JSONP 绕过 CORS）
 function searchStocks(keyword) {
   return new Promise((resolve) => {
-    if (!keyword.trim()) {
-      resolve([]);
-      return;
-    }
-    const callbackName = 'stockSearchCb_' + Date.now();
+    const kw = keyword.trim();
+    if (!kw) { resolve([]); return; }
+    // 使用东方财富搜索API（支持真正的JSONP回调，浏览器可直接调用）
+    const callbackName = 'emSearchCb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
     const script = document.createElement('script');
-    script.charset = 'gbk';
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve([]);
-    }, 5000);
-
+    const timeout = setTimeout(() => { cleanup(); resolve([]); }, 6000);
     function cleanup() {
       clearTimeout(timeout);
       if (script.parentNode) script.parentNode.removeChild(script);
       delete window[callbackName];
     }
-
     window[callbackName] = (data) => {
       cleanup();
       try {
-        // data 是字符串，格式：v_hint="..."
-        const text = typeof data === 'string' ? data : '';
-        const m = text.match(/v_hint="([^"]+)"/);
-        if (!m || !m[1]) {
-          resolve([]);
-          return;
-        }
-        const items = m[1].split('^').filter(s => s);
-        const results = items.slice(0, 12).map(item => {
-          const parts = item.split('~');
-          if (parts.length < 3) return null;
-          const market = parts[0];
-          const code = parts[1];
-          const name = parts[2];
-          const type = parts[4] || '';
-          // 保留股票(GP)/指数(ZS)/港股(GP)/美股(GP)，过滤基金/债券
-          if (!type.startsWith('GP') && !type.startsWith('ZS')) return null;
-          return { name, code: market + code, market, type };
+        const list = (data && data.QuotationCodeTable && data.QuotationCodeTable.Data) || [];
+        const results = list.slice(0, 12).map(item => {
+          // MktNum: "1"=沪市, "0"=深市；腾讯行情代码前缀 sh/sz
+          const mktNum = item.MktNum;
+          const code = item.Code;
+          const name = item.Name;
+          const typeName = item.SecurityTypeName || '';
+          // 只保留 A股、指数；过滤基金、债券、板块等
+          const classify = item.Classify || '';
+          if (classify !== 'AStock' && classify !== 'Index') return null;
+          const prefix = mktNum === '1' ? 'sh' : 'sz';
+          return { name: name, code: prefix + code, market: prefix, type: typeName };
         }).filter(s => s !== null);
         resolve(results);
       } catch (e) {
         resolve([]);
       }
     };
-
-    script.onerror = () => {
-      cleanup();
-      resolve([]);
-    };
-
-    script.src = `https://smartbox.gtimg.cn/s3/?q=${encodeURIComponent(keyword)}&t=all&cb=${callbackName}`;
+    script.onerror = () => { cleanup(); resolve([]); };
+    const url = 'https://searchapi.eastmoney.com/api/suggest/get?input=' +
+      encodeURIComponent(kw) + '&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=12&cb=' + callbackName;
+    script.src = url;
     document.head.appendChild(script);
   });
 }
