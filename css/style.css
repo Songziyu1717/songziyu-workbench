@@ -94,7 +94,51 @@ html, body {
 
 .calendar-day.selected {
   border-color: #92A8D1;
-  background: rgba(146, 168, 209, 0.15);
+  background: linear-gradient(135deg, rgba(146,168,209,0.35), rgba(146,168,209,0.55));
+  box-shadow: 0 0 0 2px #92A8D1, 0 4px 12px rgba(146,168,209,0.3);
+  font-weight: bold;
+}
+
+.calendar-day.selected .calendar-dot {
+  background: white !important;
+}
+
+/* 月历事件条 */
+.calendar-events {
+  width: 100%;
+  margin-top: 1px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.calendar-event-bar {
+  font-size: 8px;
+  line-height: 1.2;
+  padding: 1px 3px;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #2D2D2D;
+  background: rgba(247, 202, 201, 0.7);
+}
+
+.calendar-event-bar.all-day {
+  background: rgba(146, 168, 209, 0.7);
+  color: white;
+}
+
+.calendar-event-bar.continue-left {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: -2px;
+}
+
+.calendar-event-bar.continue-right {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  margin-right: -2px;
 }
 
 .calendar-day.has-todo:not(.today) {
@@ -130,10 +174,16 @@ input:focus, textarea:focus, select:focus {
     padding: 1rem;
     border-radius: 1.25rem;
   }
-  
+
   .calendar-day {
     border-radius: 0.75rem;
     font-size: 0.75rem;
+  }
+
+  .calendar-event-bar {
+    font-size: 7px;
+    padding: 0 2px;
+    border-radius: 2px;
   }
 }
 

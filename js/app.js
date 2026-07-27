@@ -302,9 +302,20 @@ createApp({
       const startWeekday = firstDay.getDay();
       const days = [];
       for (let i = 0; i < startWeekday; i++) {
-        days.push({ day: '', date: '', isToday: false, hasTodo: false, dots: [] });
+        days.push({ day: '', date: '', isToday: false, hasTodo: false, dots: [], events: [] });
       }
       const today = todayStr();
+      const firstDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+      const lastDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+      // 收集本月所有事件（含跨天事件）
+      const monthEvents = data.value.todos.filter(t => {
+        if (t.done) return false;
+        const start = t.startDate || t.date;
+        const end = t.endDate || t.date;
+        return start <= lastDate && end >= firstDate;
+      });
+
       for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const dayTodos = data.value.todos.filter(t => t.date === dateStr && !t.done);
@@ -312,12 +323,35 @@ createApp({
         if (dayTodos.some(t => t.type === 'fitness')) dots.push('#F7CAC9');
         if (dayTodos.some(t => t.type === 'piano')) dots.push('#92A8D1');
         if (dayTodos.some(t => t.type === 'custom')) dots.push('#4FC3F7');
+
+        // 当天事件条（限制最多显示3条）
+        const events = monthEvents
+          .filter(t => {
+            const start = t.startDate || t.date;
+            const end = t.endDate || t.date;
+            return dateStr >= start && dateStr <= end;
+          })
+          .map(t => {
+            const start = t.startDate || t.date;
+            const end = t.endDate || t.date;
+            return {
+              ...t,
+              isStart: dateStr === start,
+              isEnd: dateStr === end,
+              displayTitle: t.title,
+              startDate: start,
+              endDate: end
+            };
+          })
+          .slice(0, 3);
+
         days.push({
           day: d,
           date: dateStr,
           isToday: dateStr === today,
           hasTodo: dayTodos.length > 0,
-          dots
+          dots,
+          events
         });
       }
       return days;
@@ -326,7 +360,13 @@ createApp({
     const selectedTodos = computed(() => {
       return data.value.todos
         .filter(t => t.date === selectedDate.value)
-        .sort((a, b) => (a.done === b.done ? 0 : a.done ? 1 : -1));
+        .sort((a, b) => {
+          if (a.done !== b.done) return a.done ? 1 : -1;
+          // 按时间排序
+          const ta = a.startTime || '00:00';
+          const tb = b.startTime || '00:00';
+          return ta.localeCompare(tb);
+        });
     });
 
     // 每日待办模块：当前选中日期的任务
@@ -504,18 +544,44 @@ createApp({
       return '✨';
     }
 
+    // 日历待办输入
+    const newTodoStartTime = ref('09:00');
+    const newTodoEndTime = ref('10:00');
+    const newTodoEndDate = ref('');
+    const newTodoAllDay = ref(false);
+
     function addTodo() {
       const title = newTodoTitle.value.trim();
       if (!title) return;
+      const startDate = selectedDate.value;
+      const endDate = newTodoEndDate.value && newTodoEndDate.value >= startDate ? newTodoEndDate.value : startDate;
       data.value.todos.push({
         id: uid(),
-        date: selectedDate.value,
+        date: startDate,
+        startDate,
+        endDate,
         title,
         type: newTodoType.value,
+        startTime: newTodoAllDay.value ? '' : newTodoStartTime.value,
+        endTime: newTodoAllDay.value ? '' : newTodoEndTime.value,
+        allDay: newTodoAllDay.value,
         done: false
       });
       newTodoTitle.value = '';
+      newTodoEndDate.value = '';
+      newTodoAllDay.value = false;
       saveData();
+    }
+
+    function formatTimeRange(todo) {
+      if (todo.allDay) return '全天';
+      if (todo.startTime && todo.endTime) return `${todo.startTime} - ${todo.endTime}`;
+      if (todo.startTime) return todo.startTime;
+      return '';
+    }
+
+    function isMultiDay(todo) {
+      return todo.startDate && todo.endDate && todo.startDate !== todo.endDate;
     }
 
     function addDailyTodo() {
@@ -886,6 +952,12 @@ createApp({
       shiftTodoDate,
       todoPriorityLabel,
       todoPriorityColor,
+      newTodoStartTime,
+      newTodoEndTime,
+      newTodoEndDate,
+      newTodoAllDay,
+      formatTimeRange,
+      isMultiDay,
       courses,
       toggleWeekday,
       generateRecurringTodos,

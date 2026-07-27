@@ -159,8 +159,13 @@
             <div class="grid grid-cols-7 gap-1">
               <div v-for="day in calendarDays" :key="day.date" @click="selectedDate = day.date" :class="['calendar-day', day.isToday ? 'today' : '', selectedDate === day.date ? 'selected' : '', day.hasTodo ? 'has-todo' : '']">
                 <div>{{ day.day }}</div>
-                <div v-if="day.hasTodo" class="mt-1 flex justify-center gap-0.5">
-                  <span v-for="(dot, i) in day.dots.slice(0,3)" :key="i" class="w-1.5 h-1.5 rounded-full" :style="{ background: dot }"></span>
+                <div v-if="day.events.length > 0" class="calendar-events">
+                  <div v-for="(evt, i) in day.events" :key="i" :class="['calendar-event-bar', evt.allDay ? 'all-day' : '', !evt.isStart ? 'continue-left' : '', !evt.isEnd ? 'continue-right' : '']" :style="{ background: evt.allDay ? 'rgba(146,168,209,0.85)' : 'rgba(247,202,201,0.85)' }">
+                    {{ evt.title }}
+                  </div>
+                </div>
+                <div v-else-if="day.hasTodo" class="mt-1 flex justify-center gap-0.5">
+                  <span v-for="(dot, i) in day.dots.slice(0,3)" :key="i" class="w-1.5 h-1.5 rounded-full calendar-dot" :style="{ background: dot }"></span>
                 </div>
               </div>
             </div>
@@ -173,19 +178,41 @@
             <div class="space-y-2 mb-4">
               <div v-for="todo in selectedTodos" :key="todo.id" class="flex items-center gap-3 p-3 rounded-xl bg-svtPink/10">
                 <input type="checkbox" v-model="todo.done" @change="saveData" class="w-5 h-5 rounded border-svtPink text-svtPinkDark focus:ring-svtPink">
-                <span :class="['flex-1', todo.done ? 'line-through text-svtSub' : '']">{{ todoTypeIcon(todo.type) }} {{ todo.title }}</span>
+                <div class="flex-1 min-w-0">
+                  <div :class="['font-medium', todo.done ? 'line-through text-svtSub' : '']">{{ todoTypeIcon(todo.type) }} {{ todo.title }}</div>
+                  <div class="text-xs text-svtSub mt-0.5">
+                    <span v-if="formatTimeRange(todo)">{{ formatTimeRange(todo) }}</span>
+                    <span v-if="isMultiDay(todo)" class="ml-2 text-svtBlue">{{ todo.startDate }} ~ {{ todo.endDate }}</span>
+                  </div>
+                </div>
                 <button @click="deleteTodo(todo.id)" class="text-svtSub hover:text-red-500">🗑</button>
               </div>
               <div v-if="selectedTodos.length === 0" class="text-center text-svtSub py-4 text-sm">这天还没有任务，添加一个吧 ✨</div>
             </div>
-            <div class="flex gap-2">
-              <input v-model="newTodoTitle" @keyup.enter="addTodo" placeholder="输入新任务" class="flex-1 px-4 py-2 rounded-xl border border-svtPink/30 focus:outline-none focus:ring-2 focus:ring-svtPink bg-white/70">
-              <select v-model="newTodoType" class="px-3 py-2 rounded-xl border border-svtPink/30 bg-white/70">
-                <option value="custom">自定义</option>
-                <option value="fitness">健身课</option>
-                <option value="piano">钢琴课</option>
-              </select>
-              <button @click="addTodo" class="px-4 py-2 rounded-xl bg-gradient-to-r from-svtPink to-svtPinkDark text-svtText font-medium shadow-md">+</button>
+
+            <!-- 新增任务表单 -->
+            <div class="space-y-3 p-3 rounded-xl bg-white/50 border border-svtPink/20">
+              <input v-model="newTodoTitle" @keyup.enter="addTodo" placeholder="输入新任务" class="w-full px-4 py-2 rounded-xl border border-svtPink/30 focus:outline-none focus:ring-2 focus:ring-svtPink bg-white/70">
+              <div class="grid grid-cols-2 gap-2">
+                <select v-model="newTodoType" class="px-3 py-2 rounded-xl border border-svtPink/30 bg-white/70">
+                  <option value="custom">自定义</option>
+                  <option value="fitness">健身课</option>
+                  <option value="piano">钢琴课</option>
+                </select>
+                <select v-model="newTodoAllDay" class="px-3 py-2 rounded-xl border border-svtPink/30 bg-white/70">
+                  <option :value="false">按时间</option>
+                  <option :value="true">全天</option>
+                </select>
+              </div>
+              <div v-if="!newTodoAllDay" class="grid grid-cols-2 gap-2">
+                <input v-model="newTodoStartTime" type="time" class="px-3 py-2 rounded-xl border border-svtPink/30 bg-white/70">
+                <input v-model="newTodoEndTime" type="time" class="px-3 py-2 rounded-xl border border-svtPink/30 bg-white/70">
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <input v-model="selectedDate" type="date" class="px-3 py-2 rounded-xl border border-svtPink/30 bg-white/70 text-sm">
+                <input v-model="newTodoEndDate" type="date" placeholder="结束日期（可选）" class="px-3 py-2 rounded-xl border border-svtPink/30 bg-white/70 text-sm">
+              </div>
+              <button @click="addTodo" class="w-full py-2 rounded-xl bg-gradient-to-r from-svtPink to-svtPinkDark text-svtText font-medium shadow-md">+ 添加任务</button>
             </div>
           </div>
           <div class="card">
