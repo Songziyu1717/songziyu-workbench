@@ -88,14 +88,22 @@ async function searchStocks(keyword) {
     const buffer = await res.arrayBuffer();
     const decoder = new TextDecoder('gbk');
     const text = decoder.decode(buffer);
-    // 解析格式：v_hint="平安银行^sz000001,平安银行^sh000001,..."
+    // 解析格式：v_hint="市场~代码~名称~拼音~类型^市场~代码~名称~拼音~类型^..."
     const m = text.match(/v_hint="([^"]+)"/);
     if (!m || !m[1]) return [];
-    const items = m[1].split(';').filter(s => s);
-    return items.slice(0, 8).map(item => {
-      const parts = item.split('^');
-      return { name: parts[0], code: parts[1] };
-    }).filter(s => s.code);
+    const items = m[1].split('^').filter(s => s);
+    return items.slice(0, 10).map(item => {
+      const parts = item.split('~');
+      // parts: [市场, 代码, 名称, 拼音, 类型]
+      if (parts.length < 3) return null;
+      const market = parts[0];
+      const code = parts[1];
+      const name = parts[2];
+      const type = parts[4] || '';
+      // 只保留股票(GP)/指数(ZS)，过滤基金等其他类型
+      if (!type.startsWith('GP') && !type.startsWith('ZS')) return null;
+      return { name, code: market + code, market, type };
+    }).filter(s => s !== null);
   } catch (e) {
     return [];
   }
