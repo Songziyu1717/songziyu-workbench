@@ -1,6 +1,6 @@
 // 松子鱼工作台 Service Worker
 // 每次更新代码必须升级 CACHE_VERSION，否则手机浏览器永远用旧缓存
-const CACHE_VERSION = 'songziyu-v5';
+const CACHE_VERSION = 'songziyu-v6';
 const CACHE_NAME = CACHE_VERSION;
 
 // 静态资源使用相对路径，兼容 GitHub Pages 子路径部署

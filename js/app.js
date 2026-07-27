@@ -2,10 +2,6 @@ const { createApp, ref, computed, onMounted, watch } = Vue;
 
 const DEFAULT_DATA = {
   profile: { name: '松子鱼', avatar: '🍒', theme: 'svt', height: 166 },
-  courses: {
-    fitness: { timesPerWeek: 3, weekdays: [1, 3, 5], time: '19:00' },
-    piano: { timesPerWeek: 2, weekdays: [2, 4], time: '18:00' }
-  },
   todos: [],
   stocks: [
     { code: 'sh000001', name: '上证指数', addedAt: '2026-07-27' }
@@ -133,6 +129,66 @@ async function fetchHotBoard(type) {
   }));
 }
 
+// 每日要闻智能汇总（60s读世界API，支持CORS）
+async function fetchDailyNews() {
+  const res = await fetch('https://60s.viki.moe/v2/60s?encoding=json');
+  const json = await res.json();
+  const data = json.data || {};
+  return {
+    news: data.news || [],
+    date: data.date || '',
+    dayOfWeek: data.day_of_week || '',
+    lunarDate: data.lunar_date || '',
+    link: data.link || '',
+    tip: data.tip || ''
+  };
+}
+
+// 新闻分类关键词映射
+const NEWS_CATEGORIES = [
+  { key: 'politics', name: '🏛️ 政治经济', keywords: ['GDP', '政策', '改革', '经济', '金融', '股市', '贸易', '央行', '财政', '关税', '外交', '会议', '政府', '部长', '主席', '总统', '改革', '十四五', '十五五', '规划', '省份', '增速'] },
+  { key: 'society', name: '🏠 社会民生', keywords: ['民生', '教育', '医疗', '就业', '房价', '城市', '退休', '养老', '社保', '工资', '入学', '高考', '大学', '医院', '药品', '医保', '居民', '交通', '高铁', '地铁'] },
+  { key: 'tech', name: '💻 科技行业', keywords: ['科技', '芯片', 'AI', '人工智能', '互联网', '手机', '汽车', '新能源', '电池', '半导体', '量子', '5G', '6G', '大模型', '机器人', '百度', '阿里', '腾讯', '华为', '小米', '字节', '抖音', '长鑫'] },
+  { key: 'entertainment', name: '🎬 文体娱乐', keywords: ['电影', '票房', '明星', '体育', '综艺', '音乐', '演唱会', '奥运', '世界杯', '联赛', '女排', '足球', '篮球', '演员', '导演', '播出', '收官'] },
+  { key: 'safety', name: '⚠️ 安全警示', keywords: ['事故', '火灾', '食品', '召回', '超标', '犯罪', '坠楼', '爆炸', '塌陷', '中毒', '铅含量', '奶粉', '下架', '违法', '刑拘', '查处', '假冒', '侵权', '起诉'] },
+  { key: 'nature', name: '🌿 自然生态', keywords: ['动物', '自然', '环境', '气候', '生态', '暴雨', '洪水', '台风', '地震', '高温', '寒潮', '保护', '物种', '熊猫', '保护区', '碳', '排放', '绿色'] }
+];
+
+function categorizeNews(newsList) {
+  const result = NEWS_CATEGORIES.map(cat => ({ ...cat, items: [] }));
+  for (const news of newsList) {
+    let matched = false;
+    for (const cat of result) {
+      if (cat.keywords.some(kw => news.includes(kw))) {
+        cat.items.push(news);
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      // 未匹配的归入社会民生
+      result.find(c => c.key === 'society').items.push(news);
+    }
+  }
+  return result.filter(c => c.items.length > 0);
+}
+
+function generateNewsSummary(categories) {
+  const parts = [];
+  for (const cat of categories) {
+    if (cat.items.length === 0) continue;
+    const cleanName = cat.name.replace(/[^\u4e00-\u9fa5a-zA-Z]/g, '').trim();
+    const sample = cat.items[0];
+    if (cat.items.length === 1) {
+      parts.push(`${cleanName}方面关注「${sample.slice(0, 20)}...」`);
+    } else {
+      parts.push(`${cleanName}方面有${cat.items.length}条要闻`);
+    }
+  }
+  if (!parts.length) return '今日要闻加载中...';
+  return '今日关注：' + parts.join('，') + '。详细内容见下方分类。';
+}
+
 function generateAIReply(content) {
   const prompts = [
     '从你今天的记录来看，你对美妆行业有自己的观察，这正是做自媒体的好起点。',
@@ -167,6 +223,7 @@ createApp({
       { key: 'todo', label: '每日待办', icon: '✅' },
       { key: 'stocks', label: '股票盯盘', icon: '📈' },
       { key: 'hot', label: '热点聚合', icon: '🔥' },
+      { key: 'inspire', label: '选题灵感', icon: '✨' },
       { key: 'review', label: 'AI 复盘', icon: '💬' },
       { key: 'weight', label: '体重监测', icon: '⚖️' },
       { key: 'money', label: '记账本', icon: '💰' }
@@ -214,9 +271,157 @@ createApp({
     });
     const weightRangeDays = ref(30);
 
-    // 热点
-    const hotSources = ref(HOT_SOURCE_CONFIG.map(s => ({ ...s, items: [], loading: false })));
+    // 热点 - 每日要闻智能汇总
+    const dailyNews = ref([]);
+    const dailyNewsDate = ref('');
+    const dailyNewsLunar = ref('');
+    const dailyNewsTip = ref('');
+    const dailyNewsLink = ref('');
+    const newsCategories = ref([]);
+    const newsSummary = ref('');
+    const hotLoading = ref(false);
+    const hotSources = ref(HOT_SOURCE_CONFIG.filter(s => !s.static).map(s => ({ ...s, items: [], loading: false })));
     const hotUpdateTime = ref('');
+
+    // 选题灵感模块
+    const inspireLoading = ref(false);
+    const inspireUpdateTime = ref('');
+    const recommendedTopics = ref([]); // 今日推荐选题
+    const inspireCategories = ref([]); // 按赛道分类的热点
+
+    // 自媒体赛道分类
+    const INSPIRE_TRACKS = [
+      { key: 'beauty', name: '💄 美妆穿搭', keywords: ['妆', '护肤', '口红', '粉底', '面膜', '穿搭', '时尚', '衣服', '搭配', '化妆', '美甲', '发型', '瘦身', '减肥', '颜值'] },
+      { key: 'lifestyle', name: '🍳 生活美食', keywords: ['美食', '好吃', '餐厅', '探店', '食谱', '做饭', '早餐', '奶茶', '咖啡', '旅行', '出游', '周末', '生活', '收纳', '家居', '装修'] },
+      { key: 'knowledge', name: '📚 知识情感', keywords: ['科普', '知识', '解读', '分析', '心理学', '情感', '恋爱', '职场', '成长', '学习', '读书', '观点', '思考', '真相', '揭秘'] },
+      { key: 'society', name: '📰 社会热点', keywords: ['热搜', '争议', '曝光', '震惊', '最新', '突发', '通报', '官方', '回应', '事件', '引发', '网友', '热议'] }
+    ];
+
+    function classifyForInspire(items, platform) {
+      const results = INSPIRE_TRACKS.map(t => ({ ...t, items: [] }));
+      for (const item of items) {
+        const title = item.title || item;
+        let matched = false;
+        for (const track of results) {
+          if (track.keywords.some(kw => title.includes(kw))) {
+            track.items.push({ ...item, platform, track: track.key });
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) {
+          results.find(t => t.key === 'society').items.push({ ...item, platform, track: 'society' });
+        }
+      }
+      return results.filter(t => t.items.length > 0);
+    }
+
+    function calcReplicationScore(item) {
+      // 可复刻指数：基于热度和标题特征
+      let score = 3;
+      const title = item.title || '';
+      if (/教程|攻略|方法|技巧|分享|推荐|盘点|对比/.test(title)) score += 1;
+      if (/翻拍|模仿|跟拍|复刻|挑战/.test(title)) score += 1;
+      if (item.hot) {
+        const hot = parseInt(item.hot) || 0;
+        if (hot > 500000) score += 1;
+      }
+      return Math.min(score, 5);
+    }
+
+    function generateTopicSuggestion(item, platform) {
+      const title = item.title || '';
+      const platformName = platform === 'douyin' ? '抖音' : platform === 'xiaohongshu' ? '小红书' : platform === 'bilibili' ? 'B站' : '微博';
+      const suggestions = [];
+      if (/妆|护肤|口红|穿搭/.test(title)) {
+        suggestions.push(`做一个「${title.slice(0, 10)}」的平替/学生党版本`);
+        suggestions.push(`从成分/性价比角度深度解读`);
+      } else if (/美食|探店|食谱/.test(title)) {
+        suggestions.push(`复刻这道美食，记录制作过程`);
+        suggestions.push(`做一个同类店铺探店对比`);
+      } else if (/情感|恋爱|职场/.test(title)) {
+        suggestions.push(`结合自身经历分享观点`);
+        suggestions.push(`做一个「不同人对这件事的看法」街访`);
+      } else if (/热搜|争议|事件/.test(title)) {
+        suggestions.push(`快速跟进解读，输出个人观点`);
+        suggestions.push(`做一个时间线梳理/科普`);
+      } else {
+        suggestions.push(`结合自身风格做一次翻拍/解读`);
+        suggestions.push(`提取核心话题，做差异化内容`);
+      }
+      return suggestions[Math.floor(Math.random() * suggestions.length)];
+    }
+
+    async function refreshInspire() {
+      showToast('正在获取选题灵感...');
+      inspireLoading.value = true;
+      const now = new Date();
+      inspireUpdateTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      const allTracks = INSPIRE_TRACKS.map(t => ({ ...t, items: [] }));
+      const allHotItems = [];
+
+      // 获取各平台热榜
+      const platforms = [
+        { type: 'douyin', name: '抖音' },
+        { type: 'xiaohongshu', name: '小红书' },
+        { type: 'weibo', name: '微博' },
+        { type: 'bilibili', name: 'B站' }
+      ];
+
+      for (const p of platforms) {
+        try {
+          const items = await fetchHotBoard(p.type);
+          for (const item of items.slice(0, 8)) {
+            item.platform = p.name;
+            item.score = calcReplicationScore(item);
+            item.suggestion = generateTopicSuggestion(item, p.type);
+            allHotItems.push(item);
+            // 分类
+            for (const track of allTracks) {
+              if (track.keywords.some(kw => (item.title || '').includes(kw))) {
+                track.items.push(item);
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          console.error(`${p.name}热榜获取失败`, e);
+        }
+      }
+
+      // 获取每日新闻中的可蹭热点
+      try {
+        const newsData = await fetchDailyNews();
+        for (const news of newsData.news.slice(0, 5)) {
+          const item = {
+            title: news,
+            platform: '新闻热点',
+            score: 3,
+            suggestion: generateTopicSuggestion({ title: news }, 'news'),
+            url: newsData.link
+          };
+          allHotItems.push(item);
+          for (const track of allTracks) {
+            if (track.keywords.some(kw => news.includes(kw))) {
+              track.items.push(item);
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('新闻获取失败', e);
+      }
+
+      // 生成3条推荐选题（取可复刻指数最高的）
+      inspireCategories.value = allTracks.filter(t => t.items.length > 0);
+      recommendedTopics.value = [...allHotItems]
+        .sort((a, b) => (b.score || 0) - (a.score || 0))
+        .slice(0, 3);
+
+      inspireLoading.value = false;
+      showToast('选题灵感更新完成');
+    }
 
     // 计算属性
     const todayText = computed(() => {
@@ -259,11 +464,6 @@ createApp({
           color: EXPENSE_COLORS[category] || '#B0BEC5'
         }))
         .sort((a, b) => b.amount - a.amount);
-    });
-
-    const courses = computed({
-      get: () => data.value.courses,
-      set: (val) => { data.value.courses = val; }
     });
 
     const reviews = computed(() => [...data.value.reviews].sort((a, b) => new Date(b.date) - new Date(a.date)));
@@ -335,9 +535,7 @@ createApp({
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const dayTodos = data.value.todos.filter(t => t.date === dateStr && !t.done && t.source !== 'todo');
         const dots = [];
-        if (dayTodos.some(t => t.type === 'fitness')) dots.push('#F7CAC9');
-        if (dayTodos.some(t => t.type === 'piano')) dots.push('#92A8D1');
-        if (dayTodos.some(t => t.type === 'custom')) dots.push('#4FC3F7');
+        if (dayTodos.length > 0) dots.push('#F7CAC9');
 
         // 当天事件条（限制最多显示3条）
         const events = monthEvents
@@ -411,10 +609,81 @@ createApp({
     });
 
     const stockBrief = computed(() => {
-      if (!data.value.stocks.length) return '还没有股票，添加后我会帮你盯盘。';
-      const up = data.value.stocks.filter(s => (s.change || 0) > 0).length;
-      const down = data.value.stocks.filter(s => (s.change || 0) < 0).length;
-      return `当前关注 ${data.value.stocks.length} 只股票，上涨 ${up} 只，下跌 ${down} 只。市场有风险，投资需谨慎。`;
+      const stocks = data.value.stocks;
+      if (!stocks.length) return '还没有添加股票，搜索添加后我会帮你智能盯盘。';
+      const withPrice = stocks.filter(s => s.price != null);
+      if (!withPrice.length) return '点击右上角刷新获取最新行情后，我会生成盯盘简报。';
+
+      // 大盘走势
+      const indexStock = stocks.find(s => s.code === 'sh000001');
+      let marketLine = '';
+      if (indexStock && indexStock.change != null) {
+        const dir = indexStock.change >= 0 ? '上涨' : '下跌';
+        marketLine = `大盘上证指数${dir} ${Math.abs(indexStock.change).toFixed(2)}%，`;
+        if (indexStock.change > 1) marketLine += '市场情绪偏强，做多氛围浓厚。';
+        else if (indexStock.change > 0) marketLine += '整体震荡偏强，个股分化明显。';
+        else if (indexStock.change > -1) marketLine += '市场震荡偏弱，注意控制仓位。';
+        else marketLine += '市场情绪偏弱，建议谨慎观望。';
+      }
+
+      // 个股涨跌统计
+      const up = withPrice.filter(s => (s.change || 0) > 0);
+      const down = withPrice.filter(s => (s.change || 0) < 0);
+      const flat = withPrice.filter(s => (s.change || 0) === 0);
+      const individualStocks = withPrice.filter(s => s.code !== 'sh000001' && s.code !== 'sz399001');
+      let stockLine = `自选股中 ${individualStocks.length} 只个股，上涨 ${up.filter(s=>s.code!=='sh000001'&&s.code!=='sz399001').length} 只、下跌 ${down.filter(s=>s.code!=='sh000001'&&s.code!=='sz399001').length} 只`;
+      if (flat.length) stockLine += `、平盘 ${flat.length} 只`;
+      stockLine += '。';
+
+      // 涨跌幅最大点名
+      const sorted = [...individualStocks].sort((a, b) => (b.change || 0) - (a.change || 0));
+      let highlightLine = '';
+      if (sorted.length > 0) {
+        const top = sorted[0];
+        const bottom = sorted[sorted.length - 1];
+        if (top.change > 0) {
+          highlightLine += `涨幅居前：${top.name}(${top.change >= 0 ? '+' : ''}${(top.change || 0).toFixed(2)}%)`;
+          if (bottom && bottom.change < 0 && bottom !== top) {
+            highlightLine += `；跌幅居前：${bottom.name}(${(bottom.change || 0).toFixed(2)}%)`;
+          }
+          highlightLine += '。';
+        } else if (bottom.change < 0) {
+          highlightLine += `${bottom.name}跌幅最大(${(bottom.change || 0).toFixed(2)}%)，关注是否超跌反弹。`;
+        }
+      }
+
+      // 技术面：MA5分析
+      let techLines = [];
+      for (const s of individualStocks.slice(0, 5)) {
+        if (!s.history || s.history.length < 3) continue;
+        const closes = s.history.map(h => h.close);
+        const ma = closes.reduce((a, b) => a + b, 0) / closes.length;
+        const diff = ((s.price - ma) / ma * 100);
+        if (Math.abs(diff) < 1) {
+          techLines.push(`${s.name}贴近${closes.length}日均线(${ma.toFixed(2)})，方向待选择`);
+        } else if (diff > 3) {
+          techLines.push(`${s.name}偏离均线${diff.toFixed(1)}%，短期偏强注意回调`);
+        } else if (diff < -3) {
+          techLines.push(`${s.name}跌破均线${Math.abs(diff).toFixed(1)}%，关注支撑位`);
+        }
+      }
+      let techLine = techLines.length ? techLines.join('；') + '。' : '';
+
+      // 操作建议
+      const upRatio = individualStocks.length ? up.filter(s=>s.code!=='sh000001'&&s.code!=='sz399001').length / individualStocks.length : 0;
+      let adviceLine = '';
+      if (upRatio > 0.7) {
+        adviceLine = '多数个股走强，可适度参与但不宜追高，关注量能配合。';
+      } else if (upRatio > 0.4) {
+        adviceLine = '涨跌参半，建议精选个股轻仓操作，设好止损。';
+      } else if (upRatio > 0.2) {
+        adviceLine = '弱势个股较多，建议观望为主，等待企稳信号。';
+      } else {
+        adviceLine = '市场普跌，建议控制仓位耐心等待，不宜抄底。';
+      }
+
+      const parts = [marketLine, stockLine, highlightLine, techLine, adviceLine].filter(s => s);
+      return parts.join('\n\n');
     });
 
     // 方法
@@ -554,8 +823,6 @@ createApp({
     }
 
     function todoTypeIcon(type) {
-      if (type === 'fitness') return '💪';
-      if (type === 'piano') return '🎹';
       return '✨';
     }
 
@@ -662,41 +929,6 @@ createApp({
       saveData();
     }
 
-    function toggleWeekday(course, weekday) {
-      const list = courses.value[course].weekdays;
-      const idx = list.indexOf(weekday);
-      if (idx > -1) list.splice(idx, 1);
-      else list.push(weekday);
-      list.sort((a, b) => a - b);
-      saveData();
-    }
-
-    function generateRecurringTodos() {
-      const year = currentYear.value;
-      const month = currentMonth.value;
-      const lastDay = new Date(year, month + 1, 0).getDate();
-      let added = 0;
-      // 删除当前月已生成的固定课程
-      data.value.todos = data.value.todos.filter(t => {
-        if (t.date.startsWith(`${year}-${String(month + 1).padStart(2, '0')}`) && (t.type === 'fitness' || t.type === 'piano')) return false;
-        return true;
-      });
-      for (let d = 1; d <= lastDay; d++) {
-        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        const wd = new Date(year, month, d).getDay();
-        if (courses.value.fitness.weekdays.includes(wd)) {
-          data.value.todos.push({ id: uid(), date: dateStr, startDate: dateStr, endDate: dateStr, title: '健身课', type: 'fitness', source: 'calendar', done: false });
-          added++;
-        }
-        if (courses.value.piano.weekdays.includes(wd)) {
-          data.value.todos.push({ id: uid(), date: dateStr, startDate: dateStr, endDate: dateStr, title: '钢琴课', type: 'piano', source: 'calendar', done: false });
-          added++;
-        }
-      }
-      saveData();
-      showToast(`已生成本月 ${added} 节固定课程`);
-    }
-
     function onStockSearchInput() {
       clearTimeout(stockSearchTimer);
       const kw = stockSearchKeyword.value.trim();
@@ -740,6 +972,7 @@ createApp({
       try {
         const codes = data.value.stocks.map(s => s.code);
         const list = await fetchTencentStocks(codes);
+        const today = todayStr();
         for (const item of list) {
           const s = data.value.stocks.find(x => x.code === item.code);
           if (s) {
@@ -748,7 +981,17 @@ createApp({
             s.open = item.open;
             s.high = item.high;
             s.low = item.low;
+            s.prevClose = item.prevClose;
             s.updatedAt = item.time;
+            // 存储历史价格用于计算MA5
+            if (!s.history) s.history = [];
+            const lastEntry = s.history[s.history.length - 1];
+            if (!lastEntry || lastEntry.date !== today) {
+              s.history.push({ date: today, close: item.price });
+              if (s.history.length > 10) s.history = s.history.slice(-10);
+            } else {
+              lastEntry.close = item.price;
+            }
           }
         }
         saveData();
@@ -794,30 +1037,41 @@ createApp({
     }
 
     async function refreshHot() {
-      showToast('正在获取热榜...');
+      showToast('正在获取今日要闻...');
+      hotLoading.value = true;
       const now = new Date();
       hotUpdateTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      // 1. 获取每日新闻摘要
+      try {
+        const newsData = await fetchDailyNews();
+        dailyNews.value = newsData.news;
+        dailyNewsDate.value = newsData.date;
+        dailyNewsLunar.value = newsData.lunarDate;
+        dailyNewsTip.value = newsData.tip;
+        dailyNewsLink.value = newsData.link;
+        newsCategories.value = categorizeNews(newsData.news);
+        newsSummary.value = generateNewsSummary(newsCategories.value);
+      } catch (e) {
+        console.error(e);
+        showToast('新闻获取失败');
+      }
+
+      // 2. 获取各平台热榜（后台静默获取，不阻塞）
       for (const source of hotSources.value) {
         source.loading = true;
         try {
-          if (source.static) {
-            source.items = [
-              { title: '化妆品观察 · 本周美妆新品趋势', url: 'https://mp.weixin.qq.com' },
-              { title: '聚美丽 · 2026 美妆行业半年报', url: 'https://mp.weixin.qq.com' },
-              { title: '用户说 · 小红书护肤热门成分分析', url: 'https://mp.weixin.qq.com' },
-              { title: '青眼 · 国货彩妆出海观察', url: 'https://mp.weixin.qq.com' }
-            ];
-          } else {
-            source.items = await fetchHotBoard(source.type);
-          }
+          source.items = await fetchHotBoard(source.type);
         } catch (e) {
           console.error(e);
-          source.items = [{ title: '获取失败，请稍后重试', url: '#' }];
+          source.items = [];
         } finally {
           source.loading = false;
         }
       }
-      showToast('热榜更新完成');
+
+      hotLoading.value = false;
+      showToast('要闻更新完成');
     }
 
     function openApp(url) {
@@ -979,9 +1233,6 @@ createApp({
       newTodoAllDay,
       formatTimeRange,
       isMultiDay,
-      courses,
-      toggleWeekday,
-      generateRecurringTodos,
       stocks,
       stockSearchKeyword,
       stockSearchResults,
@@ -1002,7 +1253,20 @@ createApp({
       categoryTotals,
       hotSources,
       hotUpdateTime,
+      hotLoading,
+      dailyNews,
+      dailyNewsDate,
+      dailyNewsLunar,
+      dailyNewsTip,
+      dailyNewsLink,
+      newsCategories,
+      newsSummary,
       refreshHot,
+      inspireLoading,
+      inspireUpdateTime,
+      recommendedTopics,
+      inspireCategories,
+      refreshInspire,
       openApp,
       newReview,
       aiReply,

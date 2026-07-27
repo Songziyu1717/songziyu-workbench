@@ -34,7 +34,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="./css/style.css?v=5">
+  <link rel="stylesheet" href="./css/style.css?v=6">
 </head>
 <body class="bg-gradient-to-br from-svtBg via-white to-svtBlueLight/20 text-svtText min-h-screen">
   <div id="app" v-cloak class="flex h-screen overflow-hidden">
@@ -173,7 +173,6 @@
           <div class="card">
             <div class="flex items-center justify-between mb-4">
               <h3 class="font-bold">{{ selectedDate }} 的任务</h3>
-              <button @click="generateRecurringTodos" class="text-sm px-3 py-1 rounded-lg bg-svtBlue/20 text-svtBlue font-medium">生成本周课表</button>
             </div>
             <div class="space-y-2 mb-4">
               <div v-for="todo in selectedTodos" :key="todo.id" class="flex items-center gap-3 p-3 rounded-xl bg-svtPink/10">
@@ -194,15 +193,11 @@
             <div class="space-y-3 p-3 rounded-xl bg-white/50 border border-svtPink/20">
               <input v-model="newTodoTitle" @keyup.enter="addTodo" placeholder="输入新任务" class="w-full px-4 py-2 rounded-xl border border-svtPink/30 focus:outline-none focus:ring-2 focus:ring-svtPink bg-white/70">
               <div class="grid grid-cols-2 gap-2">
-                <select v-model="newTodoType" class="px-3 py-2 rounded-xl border border-svtPink/30 bg-white/70">
-                  <option value="custom">自定义</option>
-                  <option value="fitness">健身课</option>
-                  <option value="piano">钢琴课</option>
-                </select>
                 <select v-model="newTodoAllDay" class="px-3 py-2 rounded-xl border border-svtPink/30 bg-white/70">
                   <option :value="false">按时间</option>
                   <option :value="true">全天</option>
                 </select>
+                <div></div>
               </div>
               <div v-if="!newTodoAllDay" class="grid grid-cols-2 gap-2">
                 <input v-model="newTodoStartTime" type="time" class="px-3 py-2 rounded-xl border border-svtPink/30 bg-white/70">
@@ -213,23 +208,6 @@
                 <input v-model="newTodoEndDate" type="date" placeholder="结束日期（可选）" class="px-3 py-2 rounded-xl border border-svtPink/30 bg-white/70 text-sm">
               </div>
               <button @click="addTodo" class="w-full py-2 rounded-xl bg-gradient-to-r from-svtPink to-svtPinkDark text-svtText font-medium shadow-md">+ 添加任务</button>
-            </div>
-          </div>
-          <div class="card">
-            <h3 class="font-bold mb-3">⚙️ 固定课程设置</h3>
-            <div class="grid gap-4">
-              <div>
-                <div class="text-sm font-medium mb-2">健身课（每周 {{ courses.fitness.timesPerWeek }} 次）</div>
-                <div class="flex flex-wrap gap-2">
-                  <button v-for="w in 7" :key="w" @click="toggleWeekday('fitness', w-1)" :class="['px-3 py-1 rounded-lg text-sm border', courses.fitness.weekdays.includes(w-1) ? 'bg-svtPink text-white border-svtPink' : 'bg-white border-svtPink/30 text-svtSub']">{{ weekdayName(w-1) }}</button>
-                </div>
-              </div>
-              <div>
-                <div class="text-sm font-medium mb-2">钢琴课（每周 {{ courses.piano.timesPerWeek }} 次）</div>
-                <div class="flex flex-wrap gap-2">
-                  <button v-for="w in 7" :key="w" @click="toggleWeekday('piano', w-1)" :class="['px-3 py-1 rounded-lg text-sm border', courses.piano.weekdays.includes(w-1) ? 'bg-svtBlue text-white border-svtBlue' : 'bg-white border-svtBlue/30 text-svtSub']">{{ weekdayName(w-1) }}</button>
-                </div>
-              </div>
             </div>
           </div>
         </section>
@@ -366,7 +344,7 @@
           <!-- 盯盘简报 -->
           <div class="card">
             <h3 class="font-bold mb-2">💡 每日盯盘简报</h3>
-            <p class="text-sm text-svtSub">{{ stockBrief }}</p>
+            <p class="text-sm text-svtSub whitespace-pre-line leading-relaxed">{{ stockBrief }}</p>
           </div>
         </section>
 
@@ -416,25 +394,135 @@
           </div>
         </section>
 
-        <!-- 热点聚合 -->
+        <!-- 热点聚合 - 每日要闻智能汇总 -->
         <section v-if="currentView === 'hot'" class="space-y-6">
           <div class="flex items-center justify-between">
-            <h2 class="text-2xl font-bold">🔥 热点聚合</h2>
-            <button @click="refreshHot" class="px-4 py-2 rounded-xl bg-svtBlue/20 text-svtBlue font-medium text-sm">🔄 刷新</button>
+            <div>
+              <h2 class="text-2xl font-bold">🔥 每日要闻</h2>
+              <p v-if="dailyNewsDate" class="text-sm text-svtSub mt-1">{{ dailyNewsDate }} {{ dailyNewsLunar }} · 更新于 {{ hotUpdateTime }}</p>
+            </div>
+            <button @click="refreshHot" :disabled="hotLoading" class="px-4 py-2 rounded-xl bg-svtBlue/20 text-svtBlue font-medium text-sm disabled:opacity-50">🔄 {{ hotLoading ? '加载中' : '刷新' }}</button>
           </div>
-          <div class="grid gap-4">
-            <div v-for="source in hotSources" :key="source.name" class="card">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="font-bold">{{ source.icon }} {{ source.name }}</h3>
-                <button v-if="source.appUrl" @click="openApp(source.appUrl)" class="text-xs px-3 py-1 rounded-lg bg-svtPink/20 text-svtPinkDark font-medium">打开 App</button>
-              </div>
+
+          <!-- 智能摘要 -->
+          <div v-if="newsSummary" class="card bg-gradient-to-br from-svtPink/10 to-svtBlue/10">
+            <div class="flex items-start gap-2">
+              <span class="text-xl">💡</span>
+              <p class="text-sm text-svtText leading-relaxed flex-1">{{ newsSummary }}</p>
+            </div>
+            <p v-if="dailyNewsTip" class="text-xs text-svtSub mt-2 italic border-t border-svtPink/10 pt-2">「{{ dailyNewsTip }}」</p>
+          </div>
+
+          <!-- 分类要闻 -->
+          <div v-if="newsCategories.length > 0" class="grid gap-4">
+            <div v-for="cat in newsCategories" :key="cat.key" class="card">
+              <h3 class="font-bold mb-3">{{ cat.name }} <span class="text-xs text-svtSub font-normal">({{ cat.items.length }}条)</span></h3>
               <div class="space-y-2">
-                <a v-for="(item, idx) in source.items.slice(0,8)" :key="idx" :href="item.url" target="_blank" class="block p-2 rounded-lg hover:bg-svtPink/10 text-sm truncate">
-                  <span class="font-bold text-svtPinkDark mr-2">{{ idx + 1 }}</span>{{ item.title }}
-                </a>
-                <div v-if="source.items.length === 0" class="text-center text-svtSub py-4 text-sm">点击刷新获取数据</div>
+                <div v-for="(item, idx) in cat.items" :key="idx" class="p-2 rounded-lg bg-svtPink/5 text-sm leading-relaxed">
+                  <span class="font-bold text-svtPinkDark mr-1">{{ idx + 1 }}.</span>{{ item }}
+                </div>
               </div>
             </div>
+          </div>
+
+          <!-- 空状态 -->
+          <div v-if="!hotLoading && newsCategories.length === 0" class="card text-center py-12">
+            <p class="text-svtSub text-sm">点击右上角刷新获取今日要闻</p>
+          </div>
+
+          <!-- 各平台热榜入口 -->
+          <div class="card">
+            <h3 class="font-bold mb-3">📱 各平台热榜速览</h3>
+            <div class="grid grid-cols-2 gap-3">
+              <div v-for="source in hotSources" :key="source.name" class="p-3 rounded-xl bg-svtPink/5">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm font-medium">{{ source.icon }} {{ source.name }}</span>
+                  <button v-if="source.appUrl" @click="openApp(source.appUrl)" class="text-xs text-svtBlue">打开</button>
+                </div>
+                <div v-if="source.loading" class="text-xs text-svtSub">加载中...</div>
+                <div v-else class="space-y-1">
+                  <a v-for="(item, idx) in source.items.slice(0,3)" :key="idx" :href="item.url" target="_blank" class="block text-xs text-svtText truncate hover:text-svtPinkDark">
+                    {{ idx + 1 }}. {{ item.title }}
+                  </a>
+                  <p v-if="source.items.length === 0" class="text-xs text-svtSub">暂无数据</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 选题灵感 -->
+        <section v-if="currentView === 'inspire'" class="space-y-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-2xl font-bold">✨ 选题灵感</h2>
+              <p v-if="inspireUpdateTime" class="text-sm text-svtSub mt-1">更新于 {{ inspireUpdateTime }}</p>
+            </div>
+            <button @click="refreshInspire" :disabled="inspireLoading" class="px-4 py-2 rounded-xl bg-svtBlue/20 text-svtBlue font-medium text-sm disabled:opacity-50">🔄 {{ inspireLoading ? '加载中' : '刷新' }}</button>
+          </div>
+
+          <!-- 今日推荐选题 -->
+          <div v-if="recommendedTopics.length > 0">
+            <h3 class="font-bold mb-3 text-lg">⭐ 今日推荐选题</h3>
+            <div class="grid gap-4">
+              <div v-for="(topic, idx) in recommendedTopics" :key="idx" class="card bg-gradient-to-br from-svtPink/10 to-svtBlue/10 border border-svtPink/20">
+                <div class="flex items-start justify-between mb-2">
+                  <div class="flex-1">
+                    <div class="font-bold text-svtText">{{ topic.title.length > 40 ? topic.title.slice(0, 40) + '...' : topic.title }}</div>
+                    <div class="flex items-center gap-2 mt-1">
+                      <span class="text-xs px-2 py-0.5 rounded-full bg-svtPink/20 text-svtPinkDark font-medium">{{ topic.platform }}</span>
+                      <span class="text-xs text-svtSub">可复刻指数 {{ '★'.repeat(topic.score) }}{{ '☆'.repeat(5 - topic.score) }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="text-sm text-svtText bg-white/50 rounded-lg p-2 mt-2">
+                  💡 {{ topic.suggestion }}
+                </div>
+                <a v-if="topic.url" :href="topic.url" target="_blank" class="text-xs text-svtBlue mt-2 inline-block">查看原话题 →</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- 按赛道分类的热点 -->
+          <div v-if="inspireCategories.length > 0">
+            <h3 class="font-bold mb-3 text-lg">🎯 各赛道热点话题</h3>
+            <div class="grid gap-4">
+              <div v-for="track in inspireCategories" :key="track.key" class="card">
+                <h4 class="font-bold mb-3">{{ track.name }} <span class="text-xs text-svtSub font-normal">({{ track.items.length }}个话题)</span></h4>
+                <div class="space-y-2">
+                  <div v-for="(item, idx) in track.items.slice(0, 6)" :key="idx" class="p-2 rounded-lg bg-svtPink/5">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="flex-1 min-w-0">
+                        <div class="text-sm font-medium text-svtText truncate">{{ item.title }}</div>
+                        <div class="flex items-center gap-2 mt-1">
+                          <span class="text-xs text-svtSub">{{ item.platform }}</span>
+                          <span class="text-xs text-svtPinkDark">{{ '★'.repeat(item.score) }}</span>
+                        </div>
+                      </div>
+                      <a v-if="item.url" :href="item.url" target="_blank" class="text-xs text-svtBlue shrink-0">查看</a>
+                    </div>
+                    <div v-if="item.suggestion" class="text-xs text-svtSub mt-1 bg-white/40 rounded p-1.5">💡 {{ item.suggestion }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 空状态 -->
+          <div v-if="!inspireLoading && recommendedTopics.length === 0" class="card text-center py-12">
+            <p class="text-svtSub text-sm mb-2">还没有选题灵感</p>
+            <p class="text-xs text-svtSub">点击右上角刷新，获取今日可复刻的热点话题</p>
+          </div>
+
+          <!-- 说明 -->
+          <div class="card bg-svtBlue/5">
+            <h4 class="font-bold mb-2 text-sm">📌 使用说明</h4>
+            <ul class="text-xs text-svtSub space-y-1 leading-relaxed">
+              <li>• 每日抓取抖音、小红书、微博、B站热榜 + 新闻热点</li>
+              <li>• 按美妆穿搭、生活美食、知识情感、社会热点四大赛道分类</li>
+              <li>• 可复刻指数越高，说明话题越适合做内容翻拍/解读</li>
+              <li>• 每条话题都附带了内容角度建议，帮你快速上手</li>
+            </ul>
           </div>
         </section>
 
@@ -556,11 +644,11 @@
     <div v-if="toast" class="fixed top-4 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-2xl bg-svtText text-white shadow-lg z-[60] text-sm">{{ toast }}</div>
   </div>
 
-  <script src="./js/app.js?v=5"></script>
+  <script src="./js/app.js?v=6"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./service-worker.js?v=5')
+        navigator.serviceWorker.register('./service-worker.js?v=6')
           .then((reg) => {
             // 检查是否有新版本 Service Worker，有则立即激活
             if (reg.waiting) {
