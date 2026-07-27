@@ -34,7 +34,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/style.css?v=5">
 </head>
 <body class="bg-gradient-to-br from-svtBg via-white to-svtBlueLight/20 text-svtText min-h-screen">
   <div id="app" v-cloak class="flex h-screen overflow-hidden">
@@ -556,13 +556,38 @@
     <div v-if="toast" class="fixed top-4 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-2xl bg-svtText text-white shadow-lg z-[60] text-sm">{{ toast }}</div>
   </div>
 
-  <script src="./js/app.js"></script>
+  <script src="./js/app.js?v=5"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./service-worker.js')
-          .then((reg) => console.log('Service Worker 注册成功', reg.scope))
+        navigator.serviceWorker.register('./service-worker.js?v=5')
+          .then((reg) => {
+            // 检查是否有新版本 Service Worker，有则立即激活
+            if (reg.waiting) {
+              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    // 新版本已安装，强制激活并刷新页面
+                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                  }
+                });
+              }
+            });
+          })
           .catch((err) => console.log('Service Worker 注册失败', err));
+        
+        // 监听控制器变更，自动刷新页面加载新资源
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!refreshing) {
+            refreshing = true;
+            window.location.reload();
+          }
+        });
       });
     }
   </script>
