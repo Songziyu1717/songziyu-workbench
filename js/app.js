@@ -110,7 +110,8 @@ createApp({
     const currentView = ref('dashboard');
     const toast = ref('');
     const gistReady = ref(false);
-    const showSettings = ref(true);
+    const showSettings = ref(false);
+    const syncHintDismissed = ref(false);
     const gistToken = ref('');
     const gistId = ref('');
 
@@ -278,6 +279,8 @@ createApp({
 
     function loadLocal() {
       const saved = localStorage.getItem('svt-workbench-data');
+      const hintDismissed = localStorage.getItem('svt-workbench-sync-hint-dismissed');
+      if (hintDismissed) syncHintDismissed.value = true;
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
@@ -327,8 +330,15 @@ createApp({
     function saveLocal() {
       showSettings.value = false;
       gistReady.value = false;
+      syncHintDismissed.value = true;
+      localStorage.setItem('svt-workbench-sync-hint-dismissed', 'true');
       saveData();
       showToast('已切换到本地存储');
+    }
+
+    function dismissSyncHint() {
+      syncHintDismissed.value = true;
+      localStorage.setItem('svt-workbench-sync-hint-dismissed', 'true');
     }
 
     async function readGist() {
@@ -610,10 +620,12 @@ createApp({
       toast,
       gistReady,
       showSettings,
+      syncHintDismissed,
       gistToken,
       gistId,
       connectGist,
       saveLocal,
+      dismissSyncHint,
       todayText,
       todayTodos,
       weeklyTodosLeft,
