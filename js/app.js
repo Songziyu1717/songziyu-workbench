@@ -79,6 +79,28 @@ async function fetchTencentStocks(codes) {
   return parseTencentStock(text);
 }
 
+// 股票搜索（腾讯智能搜索接口）
+async function searchStocks(keyword) {
+  if (!keyword.trim()) return [];
+  try {
+    const url = `https://smartbox.gtimg.cn/s3/?q=${encodeURIComponent(keyword)}&t=all`;
+    const res = await fetch(url);
+    const buffer = await res.arrayBuffer();
+    const decoder = new TextDecoder('gbk');
+    const text = decoder.decode(buffer);
+    // 解析格式：v_hint="平安银行^sz000001,平安银行^sh000001,..."
+    const m = text.match(/v_hint="([^"]+)"/);
+    if (!m || !m[1]) return [];
+    const items = m[1].split(';').filter(s => s);
+    return items.slice(0, 8).map(item => {
+      const parts = item.split('^');
+      return { name: parts[0], code: parts[1] };
+    }).filter(s => s.code);
+  } catch (e) {
+    return [];
+  }
+}
+
 async function fetchHotBoard(type) {
   const url = `https://uapis.cn/api/v1/misc/hotboard?type=${type}`;
   const res = await fetch(url);
@@ -145,8 +167,10 @@ createApp({
     const newDailyTodoPriority = ref('normal');
 
     // 股票输入
-    const newStockCode = ref('');
-    const newStockName = ref('');
+    const stockSearchKeyword = ref('');
+    const stockSearchResults = ref([]);
+    const stockSearching = ref(false);
+    let stockSearchTimer = null;
 
     // 记账输入
     const newExpense = ref({
@@ -582,35 +606,37 @@ createApp({
       showToast(`已生成本月 ${added} 节固定课程`);
     }
 
-    function normalizeStockCode(raw) {
-      const c = raw.trim().toLowerCase();
-      const map = {
-        '.sz': 'sz', '.sh': 'sh', '.hk': 'hk', '.us': 'us'
-      };
-      for (const [suffix, prefix] of Object.entries(map)) {
-        if (c.endsWith(suffix)) {
-          return prefix + c.slice(0, -suffix.length);
-        }
-      }
-      return c;
-    }
-
-    function addStock() {
-      const code = normalizeStockCode(newStockCode.value);
-      const name = newStockName.value.trim();
-      if (!code) {
-        showToast('请输入股票代码');
+    function onStockSearchInput() {
+      clearTimeout(stockSearchTimer);
+      const kw = stockSearchKeyword.value.trim();
+      if (!kw) {
+        stockSearchResults.value = [];
         return;
       }
-      if (data.value.stocks.some(s => s.code === code)) {
+      stockSearching.value = true;
+      stockSearchTimer = setTimeout(async () => {
+        stockSearchResults.value = await searchStocks(kw);
+        stockSearching.value = false;
+      }, 300);
+    }
+
+    function addStockBySearch(item) {
+      if (data.value.stocks.some(s => s.code === item.code)) {
         showToast('该股票已存在');
         return;
       }
-      data.value.stocks.push({ code, name: name || code, addedAt: todayStr() });
-      newStockCode.value = '';
-      newStockName.value = '';
+      data.value.stocks.push({ code: item.code, name: item.name, addedAt: todayStr() });
+      stockSearchKeyword.value = '';
+      stockSearchResults.value = [];
       saveData();
       refreshStocks();
+      showToast(`已添加 ${item.name}`);
+    }
+
+    function deleteStock(code) {
+      data.value.stocks = data.value.stocks.filter(s => s.code !== code);
+      saveData();
+      showToast('已删除');
     }
 
     async function refreshStocks() {
@@ -636,6 +662,18 @@ createApp({
         console.error(e);
         showToast('行情刷新失败');
       }
+    }
+
+    function stockChangeText(stock) {
+      if (stock.change === undefined || stock.change === null) return '';
+      const sign = stock.change >= 0 ? '+' : '';
+      return `${sign}${stock.change.toFixed(2)}%`;
+    }
+
+    function stockChangeAmount(stock) {
+      if (!stock.price || !stock.prevClose) return '';
+      const amount = (stock.price - stock.prevClose).toFixed(2);
+      return (amount >= 0 ? '+' : '') + amount;
     }
 
     function addExpense() {
@@ -844,9 +882,14 @@ createApp({
       toggleWeekday,
       generateRecurringTodos,
       stocks,
-      newStockCode,
-      newStockName,
-      addStock,
+      stockSearchKeyword,
+      stockSearchResults,
+      stockSearching,
+      onStockSearchInput,
+      addStockBySearch,
+      deleteStock,
+      stockChangeText,
+      stockChangeAmount,
       refreshStocks,
       stockBrief,
       newExpense,

@@ -277,28 +277,66 @@
 
         <!-- 股票盯盘 -->
         <section v-if="currentView === 'stocks'" class="space-y-6">
-          <h2 class="text-2xl font-bold">📈 股票盯盘</h2>
-          <div class="card">
-            <div class="flex gap-2 mb-4">
-              <input v-model="newStockCode" placeholder="代码，如 sz000001 或 000001.SZ" class="flex-1 px-4 py-2 rounded-xl border border-svtPink/30 focus:outline-none focus:ring-2 focus:ring-svtPink bg-white/70">
-              <input v-model="newStockName" placeholder="名称，如 平安银行" class="flex-1 px-4 py-2 rounded-xl border border-svtPink/30 focus:outline-none focus:ring-2 focus:ring-svtPink bg-white/70">
-              <button @click="addStock" class="px-4 py-2 rounded-xl bg-gradient-to-r from-svtPink to-svtPinkDark text-svtText font-medium shadow-md">添加</button>
-            </div>
-            <div class="space-y-3">
-              <div v-for="stock in stocks" :key="stock.code" class="p-4 rounded-2xl bg-white/70 border border-svtPink/20 flex items-center justify-between">
-                <div>
-                  <div class="font-bold">{{ stock.name }} <span class="text-xs text-svtSub font-normal">{{ stock.code }}</span></div>
-                  <div class="text-xs text-svtSub">{{ stock.updatedAt || '未刷新' }}</div>
-                </div>
-                <div class="text-right">
-                  <div class="text-xl font-bold">{{ stock.price ? '¥' + stock.price : '-' }}</div>
-                  <div :class="['text-sm font-medium', stock.change >= 0 ? 'text-red-500' : 'text-green-500']">{{ stock.change ? (stock.change >= 0 ? '+' : '') + stock.change + '%' : '' }}</div>
-                </div>
-              </div>
-              <div v-if="stocks.length === 0" class="text-center text-svtSub py-8 text-sm">还没有关注股票，添加几个吧 📊</div>
-            </div>
-            <button @click="refreshStocks" class="mt-4 w-full py-2 rounded-xl bg-svtBlue/20 text-svtBlue font-medium hover:bg-svtBlue/30">🔄 刷新行情</button>
+          <div class="flex items-center justify-between">
+            <h2 class="text-2xl font-bold">📈 股票盯盘</h2>
+            <button @click="refreshStocks" class="px-4 py-2 rounded-xl bg-svtBlue/20 text-svtBlue font-medium text-sm">🔄 刷新</button>
           </div>
+
+          <!-- 搜索添加 -->
+          <div class="card">
+            <div class="relative">
+              <input v-model="stockSearchKeyword" @input="onStockSearchInput" placeholder="搜索股票名称或代码，如「平安银行」「000001」" class="w-full px-4 py-3 rounded-xl border border-svtPink/30 focus:outline-none focus:ring-2 focus:ring-svtPink bg-white/70">
+              <span v-if="stockSearching" class="absolute right-4 top-1/2 -translate-y-1/2 text-svtSub text-sm">搜索中...</span>
+            </div>
+            <!-- 搜索结果下拉 -->
+            <div v-if="stockSearchResults.length > 0" class="mt-2 rounded-xl border border-svtPink/20 bg-white shadow-lg overflow-hidden">
+              <div v-for="item in stockSearchResults" :key="item.code" @click="addStockBySearch(item)" class="px-4 py-3 hover:bg-svtPink/10 cursor-pointer flex items-center justify-between border-b border-svtPink/10 last:border-0">
+                <div>
+                  <span class="font-bold">{{ item.name }}</span>
+                  <span class="text-xs text-svtSub ml-2">{{ item.code }}</span>
+                </div>
+                <span class="text-svtPinkDark text-sm font-medium">+ 添加</span>
+              </div>
+            </div>
+            <div v-else-if="stockSearchKeyword && !stockSearching" class="mt-2 text-center text-svtSub text-sm py-2">输入名称搜索，点击结果添加</div>
+          </div>
+
+          <!-- 自选股列表（同花顺风格） -->
+          <div class="card p-0 overflow-hidden">
+            <!-- 表头 -->
+            <div class="flex items-center px-4 py-2 bg-svtPink/10 text-xs text-svtSub font-medium border-b border-svtPink/20">
+              <div class="flex-1">名称/代码</div>
+              <div class="w-20 text-right">现价</div>
+              <div class="w-24 text-right">涨跌幅</div>
+              <div class="w-10"></div>
+            </div>
+            <!-- 列表 -->
+            <div v-for="stock in stocks" :key="stock.code" class="flex items-center px-4 py-3 border-b border-svtPink/10 last:border-0 hover:bg-svtPink/5">
+              <div class="flex-1 min-w-0">
+                <div class="font-bold truncate">{{ stock.name }}</div>
+                <div class="text-xs text-svtSub">{{ stock.code }}</div>
+              </div>
+              <div class="w-20 text-right">
+                <div class="font-bold" :class="stock.change >= 0 ? 'text-red-500' : 'text-green-500'">{{ stock.price ? stock.price.toFixed(2) : '--' }}</div>
+                <div class="text-xs text-svtSub">{{ stockChangeAmount(stock) }}</div>
+              </div>
+              <div class="w-24 text-right">
+                <span v-if="stock.change !== undefined && stock.change !== null" :class="['inline-block px-2 py-1 rounded-md text-xs font-bold text-white', stock.change >= 0 ? 'bg-red-500' : 'bg-green-500']">
+                  {{ stockChangeText(stock) }}
+                </span>
+                <span v-else class="text-svtSub text-xs">--</span>
+              </div>
+              <div class="w-10 text-right">
+                <button @click="deleteStock(stock.code)" class="text-svtSub hover:text-red-500 text-sm">🗑</button>
+              </div>
+            </div>
+            <div v-if="stocks.length === 0" class="text-center text-svtSub py-12 text-sm">
+              还没有自选股<br>
+              <span class="text-xs">上方搜索框输入名称即可添加</span>
+            </div>
+          </div>
+
+          <!-- 盯盘简报 -->
           <div class="card">
             <h3 class="font-bold mb-2">💡 每日盯盘简报</h3>
             <p class="text-sm text-svtSub">{{ stockBrief }}</p>
