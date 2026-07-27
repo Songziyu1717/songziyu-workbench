@@ -1,7 +1,7 @@
 const { createApp, ref, computed, onMounted, watch } = Vue;
 
 const DEFAULT_DATA = {
-  profile: { name: '松子鱼', avatar: '🍒', theme: 'svt' },
+  profile: { name: '松子鱼', avatar: '🍒', theme: 'svt', height: 166 },
   courses: {
     fitness: { timesPerWeek: 3, weekdays: [1, 3, 5], time: '19:00' },
     piano: { timesPerWeek: 2, weekdays: [2, 4], time: '18:00' }
@@ -12,6 +12,7 @@ const DEFAULT_DATA = {
   ],
   expenses: [],
   reviews: [],
+  weights: [],
   hotSources: {
     wechatAlbums: ['化妆品观察', '聚美丽']
   }
@@ -122,9 +123,10 @@ createApp({
       { key: 'calendar', label: '日历计划', icon: '📅' },
       { key: 'todo', label: '每日待办', icon: '✅' },
       { key: 'stocks', label: '股票盯盘', icon: '📈' },
-      { key: 'money', label: '记账本', icon: '💰' },
       { key: 'hot', label: '热点聚合', icon: '🔥' },
-      { key: 'review', label: 'AI 复盘', icon: '💬' }
+      { key: 'review', label: 'AI 复盘', icon: '💬' },
+      { key: 'weight', label: '体重监测', icon: '⚖️' },
+      { key: 'money', label: '记账本', icon: '💰' }
     ];
 
     const currentMenu = computed(() => menu.find(m => m.key === currentView.value) || menu[0]);
@@ -158,6 +160,14 @@ createApp({
     // 复盘输入
     const newReview = ref('');
     const aiReply = ref('');
+
+    // 体重监测输入
+    const newWeight = ref({
+      weight: '',
+      date: todayStr(),
+      note: ''
+    });
+    const weightRangeDays = ref(30);
 
     // 热点
     const hotSources = ref(HOT_SOURCE_CONFIG.map(s => ({ ...s, items: [], loading: false })));
@@ -212,6 +222,44 @@ createApp({
     });
 
     const reviews = computed(() => [...data.value.reviews].sort((a, b) => new Date(b.date) - new Date(a.date)));
+
+    // 体重相关计算属性
+    const sortedWeights = computed(() => {
+      return [...data.value.weights].sort((a, b) => new Date(a.date) - new Date(b.date));
+    });
+
+    const recentWeights = computed(() => {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - weightRangeDays.value);
+      return sortedWeights.value.filter(w => new Date(w.date) >= cutoff);
+    });
+
+    const currentWeight = computed(() => {
+      if (sortedWeights.value.length === 0) return null;
+      return sortedWeights.value[sortedWeights.value.length - 1].weight;
+    });
+
+    const weightChange = computed(() => {
+      if (sortedWeights.value.length < 2) return 0;
+      const first = sortedWeights.value[0].weight;
+      const last = sortedWeights.value[sortedWeights.value.length - 1].weight;
+      return +(last - first).toFixed(1);
+    });
+
+    const bmi = computed(() => {
+      if (!currentWeight.value || !data.value.profile.height) return null;
+      const h_m = data.value.profile.height / 100;
+      return +(currentWeight.value / (h_m * h_m)).toFixed(1);
+    });
+
+    const weightChartData = computed(() => {
+      const list = recentWeights.value;
+      if (list.length === 0) return { labels: [], values: [] };
+      return {
+        labels: list.map(w => w.date.slice(5)),
+        values: list.map(w => w.weight)
+      };
+    });
 
     const calendarDays = computed(() => {
       const year = currentYear.value;
@@ -664,6 +712,62 @@ createApp({
       aiReply.value = generateAIReply(newReview.value);
     }
 
+    // 体重监测方法
+    function addWeight() {
+      const weight = parseFloat(newWeight.value.weight);
+      if (!weight || weight <= 0 || weight > 300) {
+        showToast('请输入有效体重');
+        return;
+      }
+      // 如果当天已有记录，则更新
+      const existing = data.value.weights.find(w => w.date === newWeight.value.date);
+      if (existing) {
+        existing.weight = weight;
+        existing.note = newWeight.value.note;
+      } else {
+        data.value.weights.push({
+          id: uid(),
+          date: newWeight.value.date,
+          weight,
+          note: newWeight.value.note
+        });
+      }
+      newWeight.value = { weight: '', date: todayStr(), note: '' };
+      saveData();
+      showToast('体重记录已保存');
+    }
+
+    function deleteWeight(id) {
+      data.value.weights = data.value.weights.filter(w => w.id !== id);
+      saveData();
+    }
+
+    function bmiStatus(bmiValue) {
+      if (bmiValue < 18.5) return { label: '偏瘦', color: '#92A8D1' };
+      if (bmiValue < 24) return { label: '正常', color: '#4FC3F7' };
+      if (bmiValue < 28) return { label: '超重', color: '#FFB7C5' };
+      return { label: '肥胖', color: '#FF6B6B' };
+    }
+
+    function getWeightPointY(weight, min, max, height) {
+      if (max === min) return height / 2;
+      return height - ((weight - min) / (max - min)) * height;
+    }
+
+    function getWeightPath(values, width, height) {
+      if (values.length < 2) return '';
+      const min = Math.min(...values) - 0.5;
+      const max = Math.max(...values) + 0.5;
+      const stepX = width / (values.length - 1);
+      let d = '';
+      values.forEach((v, i) => {
+        const x = i * stepX;
+        const y = getWeightPointY(v, min, max, height);
+        d += (i === 0 ? 'M' : 'L') + `${x},${y} `;
+      });
+      return d;
+    }
+
     // 生命周期
     onMounted(() => {
       loadLocal();
@@ -760,7 +864,20 @@ createApp({
       aiReply,
       reviews,
       saveReview,
-      askAIAdvice
+      askAIAdvice,
+      newWeight,
+      weightRangeDays,
+      sortedWeights,
+      recentWeights,
+      currentWeight,
+      weightChange,
+      bmi,
+      weightChartData,
+      addWeight,
+      deleteWeight,
+      bmiStatus,
+      getWeightPath,
+      getWeightPointY,
     };
   }
 }).mount('#app');

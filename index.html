@@ -7,9 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="松子鱼工作台">
-  <link rel="manifest" href="./manifest.json">
-  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
-  <link rel="icon" type="image/png" href="./icons/favicon.png">
+  <link rel="manifest" href="./manifest.json?v=2">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=2">
+  <link rel="icon" type="image/png" href="./icons/favicon.png?v=2">
   <title>松子鱼的工作台</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -115,15 +115,25 @@
               <div class="text-sm text-svtSub">关注股票</div>
               <div class="text-2xl font-bold">{{ stocks.length }}</div>
             </div>
-            <div @click="navigate('money')" class="dashboard-card">
-              <div class="text-3xl mb-2">💰</div>
-              <div class="text-sm text-svtSub">本月支出</div>
-              <div class="text-2xl font-bold">¥{{ monthTotal.toFixed(0) }}</div>
-            </div>
             <div @click="navigate('hot')" class="dashboard-card">
               <div class="text-3xl mb-2">🔥</div>
               <div class="text-sm text-svtSub">热榜更新</div>
               <div class="text-2xl font-bold">{{ hotUpdateTime || '未刷新' }}</div>
+            </div>
+            <div @click="navigate('review')" class="dashboard-card">
+              <div class="text-3xl mb-2">💬</div>
+              <div class="text-sm text-svtSub">AI 复盘</div>
+              <div class="text-2xl font-bold">{{ reviews.length }}</div>
+            </div>
+            <div @click="navigate('weight')" class="dashboard-card">
+              <div class="text-3xl mb-2">⚖️</div>
+              <div class="text-sm text-svtSub">当前体重</div>
+              <div class="text-2xl font-bold">{{ currentWeight ? currentWeight + 'kg' : '-' }}</div>
+            </div>
+            <div @click="navigate('money')" class="dashboard-card">
+              <div class="text-3xl mb-2">💰</div>
+              <div class="text-sm text-svtSub">本月支出</div>
+              <div class="text-2xl font-bold">¥{{ monthTotal.toFixed(0) }}</div>
             </div>
           </div>
           <div class="card">
@@ -390,6 +400,91 @@
             </div>
           </div>
         </section>
+
+        <!-- 体重监测 -->
+        <section v-if="currentView === 'weight'" class="space-y-6">
+          <h2 class="text-2xl font-bold">⚖️ 体重监测</h2>
+
+          <!-- 核心数据 -->
+          <div class="card text-center">
+            <div class="text-sm text-svtSub mb-1">当前体重</div>
+            <div class="text-5xl font-bold bg-gradient-to-r from-svtPinkDark to-svtBlue bg-clip-text text-transparent">
+              {{ currentWeight ? currentWeight : '--' }}
+              <span class="text-2xl">kg</span>
+            </div>
+            <div class="flex justify-center gap-4 mt-3 text-sm">
+              <span v-if="weightChange !== 0" :class="['font-medium', weightChange > 0 ? 'text-red-500' : 'text-green-500']">
+                {{ weightChange > 0 ? '↑' : '↓' }} {{ Math.abs(weightChange) }}kg
+              </span>
+              <span v-if="bmi" class="font-medium" :style="{ color: bmiStatus(bmi).color }">
+                BMI {{ bmi }} · {{ bmiStatus(bmi).label }}
+              </span>
+              <span v-else class="text-svtSub">身高 166cm</span>
+            </div>
+          </div>
+
+          <!-- 趋势图 -->
+          <div class="card">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-bold">📉 体重趋势</h3>
+              <div class="flex gap-1 bg-svtPink/10 rounded-lg p-1">
+                <button @click="weightRangeDays = 7" :class="['px-3 py-1 rounded-md text-xs', weightRangeDays === 7 ? 'bg-white shadow-sm text-svtText font-medium' : 'text-svtSub']">7天</button>
+                <button @click="weightRangeDays = 30" :class="['px-3 py-1 rounded-md text-xs', weightRangeDays === 30 ? 'bg-white shadow-sm text-svtText font-medium' : 'text-svtSub']">30天</button>
+                <button @click="weightRangeDays = 90" :class="['px-3 py-1 rounded-md text-xs', weightRangeDays === 90 ? 'bg-white shadow-sm text-svtText font-medium' : 'text-svtSub']">90天</button>
+              </div>
+            </div>
+            <div v-if="weightChartData.values.length > 1" class="relative h-48 w-full">
+              <svg :viewBox="`0 0 ${weightChartData.values.length > 1 ? (weightChartData.values.length - 1) * 40 : 40} 160`" preserveAspectRatio="none" class="w-full h-full overflow-visible">
+                <defs>
+                  <linearGradient id="weightGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#F7CAC9" stop-opacity="0.4"/>
+                    <stop offset="100%" stop-color="#F7CAC9" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path :d="getWeightPath(weightChartData.values, (weightChartData.values.length - 1) * 40, 140)" fill="none" stroke="#F7CAC9" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle v-for="(w, i) in weightChartData.values" :key="i" :cx="i * 40" :cy="getWeightPointY(w, Math.min(...weightChartData.values) - 0.5, Math.max(...weightChartData.values) + 0.5, 140)" r="4" fill="#92A8D1" stroke="white" stroke-width="2"/>
+              </svg>
+              <div class="flex justify-between text-xs text-svtSub mt-2">
+                <template v-for="(label, i) in weightChartData.labels" :key="i">
+                  <span v-if="i === 0 || i === weightChartData.labels.length - 1 || i % Math.max(1, Math.ceil(weightChartData.labels.length / 4)) === 0">{{ label }}</span>
+                </template>
+              </div>
+            </div>
+            <div v-else-if="weightChartData.values.length === 1" class="h-48 flex items-center justify-center text-svtSub text-sm">
+              只有一条记录，再记录几天就能看到趋势图啦 ✨
+            </div>
+            <div v-else class="h-48 flex items-center justify-center text-svtSub text-sm">
+              还没有体重记录，添加第一条吧 📊
+            </div>
+          </div>
+
+          <!-- 快速记录 -->
+          <div class="card">
+            <h3 class="font-bold mb-3">➕ 记录体重</h3>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+              <input v-model.number="newWeight.weight" type="number" step="0.1" placeholder="体重 (kg)" class="px-4 py-2 rounded-xl border border-svtPink/30 focus:outline-none focus:ring-2 focus:ring-svtPink bg-white/70">
+              <input v-model="newWeight.date" type="date" class="px-4 py-2 rounded-xl border border-svtPink/30 focus:outline-none focus:ring-2 focus:ring-svtPink bg-white/70">
+            </div>
+            <input v-model="newWeight.note" placeholder="备注（如：早餐前 / 健身后）" class="w-full px-4 py-2 rounded-xl border border-svtPink/30 focus:outline-none focus:ring-2 focus:ring-svtPink bg-white/70 mb-3">
+            <button @click="addWeight" class="w-full py-2 rounded-xl bg-gradient-to-r from-svtPink to-svtPinkDark text-svtText font-medium shadow-md">保存记录</button>
+          </div>
+
+          <!-- 历史记录 -->
+          <div class="card">
+            <h3 class="font-bold mb-3">📝 历史记录</h3>
+            <div class="space-y-2 max-h-80 overflow-y-auto">
+              <div v-for="w in [...sortedWeights].reverse()" :key="w.id" class="flex items-center justify-between p-3 rounded-xl bg-white/60">
+                <div>
+                  <div class="font-bold">{{ w.weight }} kg <span v-if="w.note" class="text-xs text-svtSub font-normal">{{ w.note }}</span></div>
+                  <div class="text-xs text-svtSub">{{ w.date }}</div>
+                </div>
+                <button @click="deleteWeight(w.id)" class="text-svtSub hover:text-red-500">🗑</button>
+              </div>
+              <div v-if="sortedWeights.length === 0" class="text-center text-svtSub py-8 text-sm">还没有记录，开始记录第一条吧 ⚖️</div>
+            </div>
+          </div>
+        </section>
+
       </div>
     </main>
     <!-- 提示消息 -->
