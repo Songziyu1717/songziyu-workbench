@@ -79,34 +79,63 @@ async function fetchTencentStocks(codes) {
   return parseTencentStock(text);
 }
 
-// 股票搜索（腾讯智能搜索接口）
-async function searchStocks(keyword) {
-  if (!keyword.trim()) return [];
-  try {
-    const url = `https://smartbox.gtimg.cn/s3/?q=${encodeURIComponent(keyword)}&t=all`;
-    const res = await fetch(url);
-    const buffer = await res.arrayBuffer();
-    const decoder = new TextDecoder('gbk');
-    const text = decoder.decode(buffer);
-    // 解析格式：v_hint="市场~代码~名称~拼音~类型^市场~代码~名称~拼音~类型^..."
-    const m = text.match(/v_hint="([^"]+)"/);
-    if (!m || !m[1]) return [];
-    const items = m[1].split('^').filter(s => s);
-    return items.slice(0, 10).map(item => {
-      const parts = item.split('~');
-      // parts: [市场, 代码, 名称, 拼音, 类型]
-      if (parts.length < 3) return null;
-      const market = parts[0];
-      const code = parts[1];
-      const name = parts[2];
-      const type = parts[4] || '';
-      // 只保留股票(GP)/指数(ZS)，过滤基金等其他类型
-      if (!type.startsWith('GP') && !type.startsWith('ZS')) return null;
-      return { name, code: market + code, market, type };
-    }).filter(s => s !== null);
-  } catch (e) {
-    return [];
-  }
+// 股票搜索（腾讯智能搜索接口，使用 JSONP 绕过 CORS）
+function searchStocks(keyword) {
+  return new Promise((resolve) => {
+    if (!keyword.trim()) {
+      resolve([]);
+      return;
+    }
+    const callbackName = 'stockSearchCb_' + Date.now();
+    const script = document.createElement('script');
+    script.charset = 'gbk';
+    const timeout = setTimeout(() => {
+      cleanup();
+      resolve([]);
+    }, 5000);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      if (script.parentNode) script.parentNode.removeChild(script);
+      delete window[callbackName];
+    }
+
+    window[callbackName] = (data) => {
+      cleanup();
+      try {
+        // data 是字符串，格式：v_hint="..."
+        const text = typeof data === 'string' ? data : '';
+        const m = text.match(/v_hint="([^"]+)"/);
+        if (!m || !m[1]) {
+          resolve([]);
+          return;
+        }
+        const items = m[1].split('^').filter(s => s);
+        const results = items.slice(0, 12).map(item => {
+          const parts = item.split('~');
+          if (parts.length < 3) return null;
+          const market = parts[0];
+          const code = parts[1];
+          const name = parts[2];
+          const type = parts[4] || '';
+          // 保留股票(GP)/指数(ZS)/港股(GP)/美股(GP)，过滤基金/债券
+          if (!type.startsWith('GP') && !type.startsWith('ZS')) return null;
+          return { name, code: market + code, market, type };
+        }).filter(s => s !== null);
+        resolve(results);
+      } catch (e) {
+        resolve([]);
+      }
+    };
+
+    script.onerror = () => {
+      cleanup();
+      resolve([]);
+    };
+
+    script.src = `https://smartbox.gtimg.cn/s3/?q=${encodeURIComponent(keyword)}&t=all&cb=${callbackName}`;
+    document.head.appendChild(script);
+  });
 }
 
 async function fetchHotBoard(type) {
@@ -689,7 +718,11 @@ createApp({
       }
       stockSearching.value = true;
       stockSearchTimer = setTimeout(async () => {
-        stockSearchResults.value = await searchStocks(kw);
+        try {
+          stockSearchResults.value = await searchStocks(kw);
+        } catch (e) {
+          stockSearchResults.value = [];
+        }
         stockSearching.value = false;
       }, 300);
     }
