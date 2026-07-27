@@ -337,9 +337,11 @@ createApp({
       const firstDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
       const lastDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
-      // 收集本月所有事件（含跨天事件）
+      // 收集本月所有事件（含跨天事件），只显示来源为日历的任务
       const monthEvents = data.value.todos.filter(t => {
         if (t.done) return false;
+        // 只显示日历来源的任务（每日待办里添加的不显示在日历）
+        if (t.source === 'todo') return false;
         const start = t.startDate || t.date;
         const end = t.endDate || t.date;
         return start <= lastDate && end >= firstDate;
@@ -347,7 +349,7 @@ createApp({
 
       for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        const dayTodos = data.value.todos.filter(t => t.date === dateStr && !t.done);
+        const dayTodos = data.value.todos.filter(t => t.date === dateStr && !t.done && t.source !== 'todo');
         const dots = [];
         if (dayTodos.some(t => t.type === 'fitness')) dots.push('#F7CAC9');
         if (dayTodos.some(t => t.type === 'piano')) dots.push('#92A8D1');
@@ -388,7 +390,7 @@ createApp({
 
     const selectedTodos = computed(() => {
       return data.value.todos
-        .filter(t => t.date === selectedDate.value)
+        .filter(t => t.date === selectedDate.value && t.source !== 'todo')
         .sort((a, b) => {
           if (a.done !== b.done) return a.done ? 1 : -1;
           // 按时间排序
@@ -594,6 +596,7 @@ createApp({
         startTime: newTodoAllDay.value ? '' : newTodoStartTime.value,
         endTime: newTodoAllDay.value ? '' : newTodoEndTime.value,
         allDay: newTodoAllDay.value,
+        source: 'calendar',
         done: false
       });
       newTodoTitle.value = '';
@@ -625,6 +628,7 @@ createApp({
         title,
         type: 'custom',
         priority: newDailyTodoPriority.value,
+        source: 'todo',
         done: false
       });
       newDailyTodoTitle.value = '';
@@ -697,11 +701,11 @@ createApp({
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const wd = new Date(year, month, d).getDay();
         if (courses.value.fitness.weekdays.includes(wd)) {
-          data.value.todos.push({ id: uid(), date: dateStr, title: '健身课', type: 'fitness', done: false });
+          data.value.todos.push({ id: uid(), date: dateStr, startDate: dateStr, endDate: dateStr, title: '健身课', type: 'fitness', source: 'calendar', done: false });
           added++;
         }
         if (courses.value.piano.weekdays.includes(wd)) {
-          data.value.todos.push({ id: uid(), date: dateStr, title: '钢琴课', type: 'piano', done: false });
+          data.value.todos.push({ id: uid(), date: dateStr, startDate: dateStr, endDate: dateStr, title: '钢琴课', type: 'piano', source: 'calendar', done: false });
           added++;
         }
       }
