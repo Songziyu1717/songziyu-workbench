@@ -7,9 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="松子鱼工作台">
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="icon" type="image/png" href="icons/favicon.png">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="./icons/favicon.png">
   <title>松子鱼的工作台</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -34,7 +34,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="./css/style.css">
 </head>
 <body class="bg-gradient-to-br from-svtBg via-white to-svtBlueLight/20 text-svtText min-h-screen">
   <div id="app" v-cloak class="flex h-screen overflow-hidden">
@@ -323,11 +323,11 @@
     <div v-if="toast" class="fixed top-4 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-2xl bg-svtText text-white shadow-lg z-[60] text-sm">{{ toast }}</div>
   </div>
 
-  <script src="js/app.js"></script>
+  <script src="./js/app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('service-worker.js')
+        navigator.serviceWorker.register('./service-worker.js')
           .then((reg) => console.log('Service Worker 注册成功', reg.scope))
           .catch((err) => console.log('Service Worker 注册失败', err));
       });
