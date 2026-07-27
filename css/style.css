@@ -1,0 +1,167 @@
+/* SEVENTEEN 应援色主题自定义样式 */
+
+[v-cloak] {
+  display: none;
+}
+
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.emoji {
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
+
+/* 隐藏滚动条但保留滚动 */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(247, 202, 201, 0.5);
+  border-radius: 4px;
+}
+
+/* 卡片基础样式 */
+.card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(247, 202, 201, 0.35);
+  border-radius: 1.5rem;
+  padding: 1.25rem;
+  box-shadow: 0 4px 20px rgba(247, 202, 201, 0.15);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+  box-shadow: 0 6px 28px rgba(247, 202, 201, 0.22);
+}
+
+/* 仪表盘卡片 */
+.dashboard-card {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(247, 202, 201, 0.35);
+  border-radius: 1.5rem;
+  padding: 1rem;
+  box-shadow: 0 4px 16px rgba(247, 202, 201, 0.12);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dashboard-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(247, 202, 201, 0.22);
+}
+
+.dashboard-card:nth-child(2):hover {
+  box-shadow: 0 8px 24px rgba(146, 168, 209, 0.22);
+}
+
+.dashboard-card:nth-child(3):hover {
+  box-shadow: 0 8px 24px rgba(79, 195, 247, 0.22);
+}
+
+/* 日历样式 */
+.calendar-day {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid transparent;
+}
+
+.calendar-day:hover {
+  background: rgba(247, 202, 201, 0.25);
+}
+
+.calendar-day.today {
+  background: linear-gradient(135deg, #F7CAC9, #FFB7C5);
+  color: white;
+  font-weight: bold;
+  box-shadow: 0 2px 8px rgba(247, 202, 201, 0.4);
+}
+
+.calendar-day.selected {
+  border-color: #92A8D1;
+  background: rgba(146, 168, 209, 0.15);
+}
+
+.calendar-day.has-todo:not(.today) {
+  background: rgba(247, 202, 201, 0.15);
+}
+
+/* 按钮动画 */
+button {
+  transition: all 0.15s;
+}
+
+button:active {
+  transform: scale(0.96);
+}
+
+/* 输入框 focus */
+input:focus, textarea:focus, select:focus {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+/* 响应式侧边栏 */
+@media (min-width: 1024px) {
+  aside {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+  }
+}
+
+/* 移动端优化 */
+@media (max-width: 640px) {
+  .card {
+    padding: 1rem;
+    border-radius: 1.25rem;
+  }
+  
+  .calendar-day {
+    border-radius: 0.75rem;
+    font-size: 0.75rem;
+  }
+}
+
+/* 选中态动画 */
+.calendar-day.selected,
+button.bg-svtPink,
+button.bg-svtBlue {
+  transition: all 0.2s ease;
+}
+
+/* 提示消息动画 */
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -20px);
+}
+
+/* 链接样式 */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #FFB7C5;
+}
