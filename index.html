@@ -102,8 +102,13 @@
           <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div @click="navigate('calendar')" class="dashboard-card">
               <div class="text-3xl mb-2">📅</div>
-              <div class="text-sm text-svtSub">今日待办</div>
+              <div class="text-sm text-svtSub">日历计划</div>
               <div class="text-2xl font-bold">{{ todayTodos.length }}</div>
+            </div>
+            <div @click="navigate('todo')" class="dashboard-card">
+              <div class="text-3xl mb-2">✅</div>
+              <div class="text-sm text-svtSub">每日待办</div>
+              <div class="text-2xl font-bold">{{ dailyTodoStats.done }}/{{ dailyTodoStats.total }}</div>
             </div>
             <div @click="navigate('stocks')" class="dashboard-card">
               <div class="text-3xl mb-2">📈</div>
@@ -189,6 +194,74 @@
                 </div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <!-- 每日待办 -->
+        <section v-if="currentView === 'todo'" class="space-y-6">
+          <h2 class="text-2xl font-bold">✅ 每日待办</h2>
+
+          <!-- 日期切换 -->
+          <div class="card">
+            <div class="flex items-center justify-between mb-4">
+              <button @click="shiftTodoDate(-1)" class="p-2 rounded-xl hover:bg-svtPink/20 text-lg">◀</button>
+              <div class="text-center">
+                <input v-model="todoDate" type="date" class="px-3 py-1 rounded-xl border border-svtPink/30 bg-white/70 text-center font-bold">
+                <div class="text-xs text-svtSub mt-1">{{ todoDate === todayText.slice(0,10) ? '今天' : '' }}</div>
+              </div>
+              <button @click="shiftTodoDate(1)" class="p-2 rounded-xl hover:bg-svtPink/20 text-lg">▶</button>
+            </div>
+
+            <!-- 完成进度 -->
+            <div class="mb-4">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm text-svtSub">完成进度</span>
+                <span class="text-sm font-bold">{{ dailyTodoStats.done }}/{{ dailyTodoStats.total }}</span>
+              </div>
+              <div class="w-full h-3 rounded-full bg-svtPink/20 overflow-hidden">
+                <div class="h-full rounded-full transition-all duration-500" :style="{ width: dailyTodoStats.percent + '%', background: 'linear-gradient(to right, #F7CAC9, #92A8D1)' }"></div>
+              </div>
+            </div>
+
+            <!-- 任务列表 -->
+            <div class="space-y-2 mb-4">
+              <div v-for="todo in dailyTodos" :key="todo.id" class="flex items-center gap-3 p-3 rounded-xl" :style="{ background: todo.done ? 'rgba(247,202,201,0.05)' : 'rgba(247,202,201,0.1)', borderLeft: '3px solid ' + todoPriorityColor(todo.priority) }">
+                <input type="checkbox" :checked="todo.done" @change="toggleTodoDone(todo)" class="w-5 h-5 rounded border-svtPink text-svtPinkDark focus:ring-svtPink">
+                <div class="flex-1">
+                  <div :class="['font-medium', todo.done ? 'line-through text-svtSub' : '']">{{ todoTypeIcon(todo.type) }} {{ todo.title }}</div>
+                  <div class="text-xs text-svtSub">{{ todoPriorityLabel(todo.priority) }}</div>
+                </div>
+                <button @click="deleteDailyTodo(todo.id)" class="text-svtSub hover:text-red-500 text-sm">🗑</button>
+              </div>
+              <div v-if="dailyTodos.length === 0" class="text-center text-svtSub py-8 text-sm">这一天还没有任务，添加一个吧 ✨</div>
+            </div>
+
+            <!-- 添加新任务 -->
+            <div class="space-y-2">
+              <input v-model="newDailyTodoTitle" @keyup.enter="addDailyTodo" placeholder="输入任务内容，回车快速添加" class="w-full px-4 py-2 rounded-xl border border-svtPink/30 focus:outline-none focus:ring-2 focus:ring-svtPink bg-white/70">
+              <div class="flex gap-2">
+                <button @click="newDailyTodoPriority = 'high'" :class="['flex-1 py-1.5 rounded-lg text-xs border', newDailyTodoPriority === 'high' ? 'bg-svtPinkDark text-white border-svtPinkDark' : 'bg-white border-svtPink/30 text-svtSub']">🔴 重要</button>
+                <button @click="newDailyTodoPriority = 'normal'" :class="['flex-1 py-1.5 rounded-lg text-xs border', newDailyTodoPriority === 'normal' ? 'bg-svtPink text-white border-svtPink' : 'bg-white border-svtPink/30 text-svtSub']">🟡 普通</button>
+                <button @click="newDailyTodoPriority = 'low'" :class="['flex-1 py-1.5 rounded-lg text-xs border', newDailyTodoPriority === 'low' ? 'bg-svtBlueLight text-white border-svtBlueLight' : 'bg-white border-svtBlueLight/30 text-svtSub']">🟢 次要</button>
+                <button @click="addDailyTodo" class="px-4 py-1.5 rounded-lg bg-gradient-to-r from-svtPink to-svtPinkDark text-svtText font-medium text-sm shadow-md">添加</button>
+              </div>
+            </div>
+
+            <!-- 批量操作 -->
+            <div class="mt-4 flex gap-2" v-if="dailyTodoStats.done > 0">
+              <button @click="clearDailyDone" class="flex-1 py-1.5 rounded-lg bg-svtBlue/10 text-svtBlue text-sm font-medium">🧹 清除已完成</button>
+            </div>
+          </div>
+
+          <!-- 使用提示 -->
+          <div class="card bg-svtBlue/5 border-svtBlue/20">
+            <h3 class="font-bold mb-2 text-sm">💡 使用说明</h3>
+            <ul class="text-xs text-svtSub space-y-1">
+              <li>• 点击日期可切换查看不同天的待办</li>
+              <li>• 任务分三个优先级：重要 / 普通 / 次要</li>
+              <li>• 完成的任务可打勾，也可一键清除</li>
+              <li>• 这里的任务会同步显示在「日历计划」对应日期上</li>
+            </ul>
           </div>
         </section>
 

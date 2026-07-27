@@ -120,6 +120,7 @@ createApp({
     const menu = [
       { key: 'dashboard', label: '首页仪表盘', icon: '🏠' },
       { key: 'calendar', label: '日历计划', icon: '📅' },
+      { key: 'todo', label: '每日待办', icon: '✅' },
       { key: 'stocks', label: '股票盯盘', icon: '📈' },
       { key: 'money', label: '记账本', icon: '💰' },
       { key: 'hot', label: '热点聚合', icon: '🔥' },
@@ -136,6 +137,10 @@ createApp({
     // 待办输入
     const newTodoTitle = ref('');
     const newTodoType = ref('custom');
+    // 每日待办模块的日期选择
+    const todoDate = ref(todayStr());
+    const newDailyTodoTitle = ref('');
+    const newDailyTodoPriority = ref('normal');
 
     // 股票输入
     const newStockCode = ref('');
@@ -242,6 +247,25 @@ createApp({
       return data.value.todos
         .filter(t => t.date === selectedDate.value)
         .sort((a, b) => (a.done === b.done ? 0 : a.done ? 1 : -1));
+    });
+
+    // 每日待办模块：当前选中日期的任务
+    const dailyTodos = computed(() => {
+      return data.value.todos
+        .filter(t => t.date === todoDate.value)
+        .sort((a, b) => {
+          if (a.done !== b.done) return a.done ? 1 : -1;
+          const priorityOrder = { high: 0, normal: 1, low: 2 };
+          return (priorityOrder[a.priority] || 1) - (priorityOrder[b.priority] || 1);
+        });
+    });
+
+    const dailyTodoStats = computed(() => {
+      const list = dailyTodos.value;
+      const done = list.filter(t => t.done).length;
+      const total = list.length;
+      const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+      return { done, total, percent };
     });
 
     const focusTip = computed(() => {
@@ -412,6 +436,62 @@ createApp({
       });
       newTodoTitle.value = '';
       saveData();
+    }
+
+    function addDailyTodo() {
+      const title = newDailyTodoTitle.value.trim();
+      if (!title) {
+        showToast('请输入任务内容');
+        return;
+      }
+      data.value.todos.push({
+        id: uid(),
+        date: todoDate.value,
+        title,
+        type: 'custom',
+        priority: newDailyTodoPriority.value,
+        done: false
+      });
+      newDailyTodoTitle.value = '';
+      saveData();
+    }
+
+    function toggleTodoDone(todo) {
+      todo.done = !todo.done;
+      saveData();
+    }
+
+    function deleteDailyTodo(id) {
+      data.value.todos = data.value.todos.filter(t => t.id !== id);
+      saveData();
+    }
+
+    function clearDailyDone() {
+      const before = data.value.todos.length;
+      data.value.todos = data.value.todos.filter(t => !(t.date === todoDate.value && t.done));
+      const removed = before - data.value.todos.length;
+      if (removed > 0) {
+        saveData();
+        showToast(`已清除 ${removed} 个已完成任务`);
+      }
+    }
+
+    function shiftTodoDate(days) {
+      const d = new Date(todoDate.value);
+      d.setDate(d.getDate() + days);
+      todoDate.value = d.toISOString().slice(0, 10);
+    }
+
+    function todoPriorityLabel(priority) {
+      if (priority === 'high') return '🔴 重要';
+      if (priority === 'low') return '🟢 次要';
+      return '🟡 普通';
+    }
+
+    function todoPriorityColor(priority) {
+      if (priority === 'high') return '#FFB7C5';
+      if (priority === 'low') return '#AEC6CF';
+      return '#F7CAC9';
     }
 
     function deleteTodo(id) {
@@ -644,6 +724,18 @@ createApp({
       addTodo,
       deleteTodo,
       saveData,
+      todoDate,
+      newDailyTodoTitle,
+      newDailyTodoPriority,
+      dailyTodos,
+      dailyTodoStats,
+      addDailyTodo,
+      toggleTodoDone,
+      deleteDailyTodo,
+      clearDailyDone,
+      shiftTodoDate,
+      todoPriorityLabel,
+      todoPriorityColor,
       courses,
       toggleWeekday,
       generateRecurringTodos,
